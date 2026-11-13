@@ -1,0 +1,292 @@
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+TOKEN = "8833579481:AAGFoXCh3heOjk-vE2FFVFLl2G8OLb7243A"
+ADMIN_ID = 7074089722  
+WALLET_ADDRESS = "UQA4qQ6E8Kf0vHXXCti_PzO71qXi7KiEeN5d71UO7xWiTL-w"
+
+users = {}  
+user_states = {}  
+
+TRANSLATIONS = {
+    "uz": {
+        "welcome": "🤖 **NFT & Gift Shop Botga xush kelibsiz!**\nKerakli bo'limni tanlang:",
+        "order_btn": "🛍 NFT buyurtma berish",
+        "topup_btn": "💳 Balansni to'ldirish",
+        "profile_btn": "👤 Profil / Balans",
+        "lang_btn": "🌐 Tilni o'zgartirish",
+        "back": "🔙 Orqaga",
+        "order_prompt": "✍️ **Qanday NFT/Gift xohlaysiz?**\n\nIltimos, gift nomini to'g'ri yozib yuboring.\n*(Masalan: Snoop Dogg, Liberty Figure, Myth Mask, Vice Cream, Chill Flame)*\n\n⚠️ **Savdo komissiyasi: 25 Stars (Yulduz)**",
+        "order_sent": "✅ **Buyurtmangiz Adminga yuborildi!**\n⚠️ Komissiya: **25 Stars**\nAdmin tez orada bog'lanadi.",
+        "order_error": "❌ **Xatolik!** Gift nomi noto'g'ri yoki juda qisqa yozildi.\n\nIltimos, to'g'ri nomini yozing (Masalan: *Snoop Dogg*, *Liberty Figure*, *Myth Mask*):",
+        "zero_balance_error": "❌ **Buyurtma berib bo'lmadi!**\n\nSizning balansingiz **0 TON** (yetarli mablag' yo'q).\nIltimos, avval **'💳 Balansni to'ldirish'** bo'limi orqali balansingizni to'ldiring!",
+        "topup_text": "💳 **Balansni to'ldirish:**\n\n1. Quyidagi hamyonimizga TON o'tkazing:\n`{wallet}`\n\n2. O'tkazilgach, **'To'lovni tasdiqlash uchun yuborish'** tugmasini bosing:",
+        "topup_btn_action": "📤 To'lovni tasdiqlashga yuborish",
+        "topup_prompt": "✍️ Hamyonimizga qancha TON yubordingiz? Miqdorini raqamda yozib yuboring (masalan: `5` yoki `2.5`):",
+        "topup_sent": "✅ **To'lov so'rovi Adminga yuborildi!**\nAdmin tasdiqlagach, balansingizga qo'shiladi.",
+        "profile_text": "👤 **Sizning profilingiz:**\n\n🆔 Telegram ID: `{id}`\n👤 Ismingiz: {name}\n💰 Asosiy balans: **{balance} TON**"
+    },
+    "ru": {
+        "welcome": "🤖 **Добро пожаловать в NFT & Gift Shop Bot!**\nВыберите нужный раздел:",
+        "order_btn": "🛍 Заказать NFT",
+        "topup_btn": "💳 Пополнить баланс",
+        "profile_btn": "👤 Профиль / Баланс",
+        "lang_btn": "🌐 Изменить язык",
+        "back": "🔙 Назад",
+        "order_prompt": "✍️ **Какой NFT/Gift вы хотите?**\n\nНапишите правильное название gift'а.\n*(Пример: Snoop Dogg, Liberty Figure, Myth Mask, Vice Cream, Chill Flame)*\n\n⚠️ **Комиссия сделки: 25 Stars (Звезд)**",
+        "order_sent": "✅ **Заказ отправлен Админу!**\n⚠️ Комиссия: **25 Stars**",
+        "order_error": "❌ **Ошибка!** Название указано неверно.\n\nНапишите правильно (Например: *Snoop Dogg*, *Liberty Figure*):",
+        "zero_balance_error": "❌ **Невозможно оформить заказ!**\n\nВаш баланс составляет **0 TON** (недостаточно средств).\nПожалуйста, пополните баланс через раздел **'💳 Пополнить баланс'**!",
+        "topup_text": "💳 **Пополнение баланса:**\n\n1. Переведите TON на кошелек:\n`{wallet}`\n\n2. Затем нажмите кнопку:",
+        "topup_btn_action": "📤 Отправить на подтверждение",
+        "topup_prompt": "✍️ Сколько TON вы перевели? Напишите сумму (например: `5`):",
+        "topup_sent": "✅ **Запрос отправлен Админу!** После подтверждения баланс пополнится.",
+        "profile_text": "👤 **Ваш профиль:**\n\n🆔 Telegram ID: `{id}`\n👤 Имя: {name}\n💰 Баланс: **{balance} TON**"
+    },
+    "en": {
+        "welcome": "🤖 **Welcome to NFT & Gift Shop Bot!**\nChoose a section:",
+        "order_btn": "🛍 Order NFT",
+        "topup_btn": "💳 Top up Balance",
+        "profile_btn": "👤 Profile / Balance",
+        "lang_btn": "🌐 Change Language",
+        "back": "🔙 Back",
+        "order_prompt": "✍️ **What NFT/Gift do you want?**\n\nPlease write the correct gift name.\n*(Example: Snoop Dogg, Liberty Figure, Myth Mask, Vice Cream, Chill Flame)*\n\n⚠️ **Deal commission: 25 Stars**",
+        "order_sent": "✅ **Your order has been sent to the Admin!**\n⚠️ Commission: **25 Stars**",
+        "order_error": "❌ **Error!** Invalid gift name.\n\nPlease type correctly (e.g., *Snoop Dogg*, *Liberty Figure*):",
+        "zero_balance_error": "❌ **Cannot place order!**\n\nYour balance is **0 TON** (insufficient funds).\nPlease top up your balance first via the **'💳 Top up Balance'** section!",
+        "topup_text": "💳 **Top up Balance:**\n\n1. Transfer TON to wallet:\n`{wallet}`\n\n2. Then click the button below:",
+        "topup_btn_action": "📤 Send for verification",
+        "topup_prompt": "✍️ How much TON did you transfer? Send the amount (e.g., `5`):",
+        "topup_sent": "✅ **Request sent to Admin!** Balance will be updated after approval.",
+        "profile_text": "👤 **Your Profile:**\n\n🆔 Telegram ID: `{id}`\n👤 Name: {name}\n💰 Balance: **{balance} TON**"
+    }
+}
+
+def get_user(user_id):
+    if user_id not in users:
+        users[user_id] = {"lang": "uz", "balance": 0.0}
+    return users[user_id]
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    get_user(user_id)
+    user_states.pop(user_id, None)
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("🇺🇿 O'zbekcha", callback_data="lang_uz"),
+            InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
+            InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")
+        ]
+    ]
+    text = "🌐 Tilni tanlang / Выберите язык / Select language:"
+    if update.message:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    elif update.callback_query:
+        await update.callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def show_main_menu_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lang = get_user(user_id)["lang"]
+    t = TRANSLATIONS[lang]
+    
+    keyboard = [
+        [InlineKeyboardButton(t["order_btn"], callback_data="make_order")],
+        [InlineKeyboardButton(t["topup_btn"], callback_data="top_up")],
+        [InlineKeyboardButton(t["profile_btn"], callback_data="profile")],
+        [InlineKeyboardButton(t["lang_btn"], callback_data="change_lang")]
+    ]
+    await update.message.reply_text(t["welcome"], reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    lang = get_user(user_id)["lang"]
+    t = TRANSLATIONS[lang]
+    
+    keyboard = [
+        [InlineKeyboardButton(t["order_btn"], callback_data="make_order")],
+        [InlineKeyboardButton(t["topup_btn"], callback_data="top_up")],
+        [InlineKeyboardButton(t["profile_btn"], callback_data="profile")],
+        [InlineKeyboardButton(t["lang_btn"], callback_data="change_lang")]
+    ]
+    await query.message.edit_text(t["welcome"], reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user = query.from_user
+    user_id = user.id
+    data = query.data
+    user_data = get_user(user_id)
+    
+    if data.startswith("lang_"):
+        user_data["lang"] = data.split("_")[1]
+        await show_main_menu(update, context)
+        return
+    elif data == "change_lang":
+        keyboard = [
+            [
+                InlineKeyboardButton("🇺🇿 O'zbekcha", callback_data="lang_uz"),
+                InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
+                InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")
+            ]
+        ]
+        await query.message.edit_text("🌐 Tilni tanlang / Выберите язык / Select language:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    lang = user_data["lang"]
+    t = TRANSLATIONS[lang]
+    
+    if data == "profile":
+        text = t["profile_text"].format(id=user_id, name=user.first_name, balance=user_data['balance'])
+        keyboard = [[InlineKeyboardButton(t["back"], callback_data="back_home")]]
+        await query.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        
+    elif data == "top_up":
+        keyboard = [
+            [InlineKeyboardButton(t["topup_btn_action"], callback_data="start_topup")],
+            [InlineKeyboardButton(t["back"], callback_data="back_home")]
+        ]
+        text = t["topup_text"].format(wallet=WALLET_ADDRESS)
+        await query.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        
+    elif data == "start_topup":
+        user_states[user_id] = "waiting_for_topup_amount"
+        text = t["topup_prompt"]
+        keyboard = [[InlineKeyboardButton(t["back"], callback_data="back_home")]]
+        await query.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        
+    elif data == "make_order":
+        user_states[user_id] = "waiting_for_order"
+        text = t["order_prompt"]
+        keyboard = [[InlineKeyboardButton(t["back"], callback_data="back_home")]]
+        await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        
+    elif data == "back_home":
+        user_states.pop(user_id, None)
+        await show_main_menu(update, context)
+        
+    elif data.startswith("approve_"):
+        if user_id != ADMIN_ID:
+            return
+        _, target_user_id, amount = data.split("_")
+        target_user_id = int(target_user_id)
+        amount = float(amount)
+        
+        target_data = get_user(target_user_id)
+        target_data["balance"] += amount
+        
+        await query.message.edit_text(f"✅ Tasdiqlandi! Foydalanuvchiga {amount} TON qo'shildi.")
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text=f"🎉 **Balansingiz to'ldirildi!**\nSizning balansingizga **{amount} TON** qo'shildi.",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+
+    elif data.startswith("reject_"):
+        if user_id != ADMIN_ID:
+            return
+        _, target_user_id = data.split("_")
+        target_user_id = int(target_user_id)
+        
+        await query.message.edit_text("❌ To'lov so'rovi rad etildi.")
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text="❌ Afsuski, sizning to'lov so'rovingiz admin tomonidan rad etildi.",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_id = user.id
+    text = update.message.text
+    state = user_states.get(user_id)
+    user_data = get_user(user_id)
+    lang = user_data["lang"]
+    t = TRANSLATIONS[lang]
+    
+    if state == "waiting_for_order":
+        # Balans 0 yoki undan kam bo'lsa, buyurtmani qabul qilmaymiz va adminga yubormaymiz
+        if user_data["balance"] <= 0:
+            user_states.pop(user_id, None)
+            await update.message.reply_text(t["zero_balance_error"], parse_mode="Markdown")
+            await show_main_menu_msg(update, context)
+            return
+
+        if not text or len(text.strip()) < 3:
+            await update.message.reply_text(t["order_error"], parse_mode="Markdown")
+            return
+            
+        user_states.pop(user_id, None)
+        
+        await update.message.reply_text(t["order_sent"], parse_mode="Markdown")
+        await show_main_menu_msg(update, context)
+        
+        admin_text = (
+            f"🔔 **Yangi NFT Buyurtmasi!**\n\n"
+            f"👤 Xaridor: {user.first_name}\n"
+            f"🆔 ID: `{user_id}`\n"
+            f"🌐 Username: @{user.username if user.username else 'yoq'}\n\n"
+            f"📦 **Tanlangan Gift:** {text}\n"
+            f"⚠️ **Komissiya:** 25 Stars"
+        )
+        try:
+            await context.bot.send_message(chat_id=ADMIN_ID, text=admin_text, parse_mode="Markdown")
+        except Exception as e:
+            print(e)
+            
+    elif state == "waiting_for_topup_amount":
+        try:
+            amount = float(text.strip())
+            if amount <= 0:
+                raise ValueError()
+        except:
+            await update.message.reply_text("❌ Noto'g'ri miqdor! Iltimos, faqat raqam yozing (masalan: `5`):", parse_mode="Markdown")
+            return
+            
+        user_states.pop(user_id, None)
+        
+        await update.message.reply_text(t["topup_sent"], parse_mode="Markdown")
+        await show_main_menu_msg(update, context)
+        
+        admin_keyboard = [
+            [
+                InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"approve_{user_id}_{amount}"),
+                InlineKeyboardButton("❌ Rad etish", callback_data=f"reject_{user_id}")
+            ]
+        ]
+        admin_text = (
+            f"💳 **Yangi To'lov So'rovi!**\n\n"
+            f"👤 Foydalanuvchi: {user.first_name}\n"
+            f"🆔 ID: `{user_id}`\n"
+            f"💰 Miqdor: **{amount} TON**\n\n"
+            f"Hamyoningizga pul kelganini tekshiring va tasdiqlang:"
+        )
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=admin_text,
+                reply_markup=InlineKeyboardMarkup(admin_keyboard),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(e)
+
+if __name__ == '__main__':
+    application = ApplicationBuilder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    
+    print("Bot ishga tushdi...")
+    application.run_polling()
